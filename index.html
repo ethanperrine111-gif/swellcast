@@ -934,6 +934,9 @@ function paintCam(canvas, spot, data){
   const kts = wind!=null ? mps_to_kts(wind) : 8;
   startOceanCam(canvas, {waveH:wave, windKts:kts, tz:spot.tz, headland: /point|reef/i.test(spot.type)});
 }
+const _ok = v => v!=null && !isNaN(v);
+const fx = (v, dp) => _ok(v) ? Number(v).toFixed(dp) : '—';
+const compassSafe = v => _ok(v) ? compass(v) : '—';
 function paintConditionsStrip(el, spot, data){
   if(!data.marine || !data.weather){
     el.innerHTML = '<div class="card-pad" style="grid-column:1/-1;color:var(--mute)">Conditions unavailable.</div>';
@@ -951,38 +954,39 @@ function paintConditionsStrip(el, spot, data){
   const windD = data.weather.hourly.wind_direction_10m[wi];
   const gust = data.weather.hourly.wind_gusts_10m?.[wi];
   const airT = data.weather.hourly.temperature_2m[wi];
-  const rate = rateConditions(spot, wave, swellDir, mps_to_kts(wind), windD);
+  const rate = rateConditions(spot, wave, swellDir, _ok(wind)?mps_to_kts(wind):null, windD);
+  const periodBand = _ok(period) ? (period>=13?'Groundswell':period>=9?'Mid-period':'Windswell') : '—';
 
   el.innerHTML = `
     <div>
       <div class="k">Surf</div>
-      <div class="v">${m_to_ft(wave).toFixed(1)}<span class="u"> ft</span></div>
+      <div class="v">${_ok(wave)?fx(m_to_ft(wave),1):'—'}<span class="u"> ft</span></div>
       <div class="chip ${rate.cls}" style="margin-top:4px">${rate.label} · ${rate.score.toFixed(1)}</div>
     </div>
     <div>
       <div class="k">Swell</div>
-      <div class="v">${m_to_ft(swellH).toFixed(1)}<span class="u"> ft @ ${swellP.toFixed(0)}s</span></div>
-      <div class="u" style="margin-top:4px">${compass(swellDir)} · ${swellDir.toFixed(0)}°</div>
+      <div class="v">${_ok(swellH)?fx(m_to_ft(swellH),1):'—'}<span class="u"> ft @ ${fx(swellP,0)}s</span></div>
+      <div class="u" style="margin-top:4px">${compassSafe(swellDir)} · ${fx(swellDir,0)}°</div>
     </div>
     <div>
       <div class="k">Wind</div>
-      <div class="v">${mps_to_kts(wind).toFixed(0)}<span class="u"> kts</span></div>
-      <div class="u" style="margin-top:4px">${compass(windD)} · gust ${gust?mps_to_kts(gust).toFixed(0):'—'}</div>
+      <div class="v">${_ok(wind)?fx(mps_to_kts(wind),0):'—'}<span class="u"> kts</span></div>
+      <div class="u" style="margin-top:4px">${compassSafe(windD)} · gust ${_ok(gust)?fx(mps_to_kts(gust),0):'—'}</div>
     </div>
     <div>
       <div class="k">Period</div>
-      <div class="v">${period.toFixed(0)}<span class="u"> s</span></div>
-      <div class="u" style="margin-top:4px">${period>=13?'Groundswell':period>=9?'Mid-period':'Windswell'}</div>
+      <div class="v">${fx(period,0)}<span class="u"> s</span></div>
+      <div class="u" style="margin-top:4px">${periodBand}</div>
     </div>
     <div>
       <div class="k">Water</div>
-      <div class="v">${cToF(seaTemp).toFixed(0)}°<span class="u">F</span></div>
-      <div class="u" style="margin-top:4px">${seaTemp.toFixed(0)}°C · ${wetsuitFor(seaTemp)}</div>
+      <div class="v">${_ok(seaTemp)?fx(cToF(seaTemp),0):'—'}°<span class="u">F</span></div>
+      <div class="u" style="margin-top:4px">${fx(seaTemp,0)}°C · ${_ok(seaTemp)?wetsuitFor(seaTemp):'—'}</div>
     </div>
     <div>
       <div class="k">Air</div>
-      <div class="v">${cToF(airT).toFixed(0)}°<span class="u">F</span></div>
-      <div class="u" style="margin-top:4px">${airT.toFixed(0)}°C</div>
+      <div class="v">${_ok(airT)?fx(cToF(airT),0):'—'}°<span class="u">F</span></div>
+      <div class="u" style="margin-top:4px">${fx(airT,0)}°C</div>
     </div>`;
 }
 function wetsuitFor(t){
@@ -1150,7 +1154,6 @@ function renderDays(spot, data){
     const wave = daily.wave_height_max[i];
     const period = daily.wave_period_max[i];
     const dir = daily.wave_direction_dominant[i];
-    // approximate midday wind for the day from hourly
     const dayIdxStart = data.weather.hourly.time.findIndex(t=>t.startsWith(day));
     let wind=null, windDir=null;
     if(dayIdxStart>=0){
@@ -1158,15 +1161,15 @@ function renderDays(spot, data){
       wind = data.weather.hourly.wind_speed_10m[midday];
       windDir = data.weather.hourly.wind_direction_10m[midday];
     }
-    const rate = rateConditions(spot, wave, dir, wind?mps_to_kts(wind):null, windDir);
+    const rate = rateConditions(spot, wave, dir, _ok(wind)?mps_to_kts(wind):null, windDir);
     const d = new Date(day);
     const dow = d.toLocaleDateString('en-US',{weekday:'short'});
     const dt = d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
     return `<div class="day ${day===todayISO?'today':''}" onclick="scrollToChart()" style="cursor:pointer">
       <div class="dow">${dow}</div>
       <div class="dt">${dt}</div>
-      <div class="wv">${m_to_ft(wave).toFixed(1)}<span style="font-size:11px;color:var(--mute)"> ft</span></div>
-      <div style="font-size:11px;color:var(--mute);margin-top:2px">${period.toFixed(0)}s ${compass(dir)}</div>
+      <div class="wv">${_ok(wave)?fx(m_to_ft(wave),1):'—'}<span style="font-size:11px;color:var(--mute)"> ft</span></div>
+      <div style="font-size:11px;color:var(--mute);margin-top:2px">${fx(period,0)}s ${compassSafe(dir)}</div>
       <div class="rating-bar"><div style="width:${rate.score*10}%;background:${rateColor(rate.cls)}"></div></div>
       <div style="margin-top:6px"><span class="chip ${rate.cls}">${rate.label}</span></div>
     </div>`;
@@ -1229,11 +1232,28 @@ function drawDualChart(svg, times, s1, s2, opts){
   svg.setAttribute('preserveAspectRatio','none');
   svg.innerHTML = '';
   const iw = W-pad.l-pad.r, ih = H-pad.t-pad.b;
-  const max1 = Math.max(...s1)*1.15, min1 = 0;
-  const max2 = Math.max(...s2)*1.15, min2 = 0;
+  const valid1 = s1.filter(v=>v!=null && !isNaN(v));
+  const valid2 = s2.filter(v=>v!=null && !isNaN(v));
+  if(!valid1.length && !valid2.length){
+    svg.insertAdjacentHTML('beforeend',
+      `<text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="13" fill="#94a3b8">Forecast unavailable for this location</text>`);
+    return;
+  }
+  const max1 = (valid1.length ? Math.max(...valid1) : 1)*1.15, min1 = 0;
+  const max2 = (valid2.length ? Math.max(...valid2) : 1)*1.15, min2 = 0;
   const x = i => pad.l + (i/(times.length-1))*iw;
   const y1 = v => pad.t + ih - ((v-min1)/(max1-min1))*ih;
   const y2 = v => pad.t + ih - ((v-min2)/(max2-min2))*ih;
+  const pathFrom = (arr, yFn) => {
+    let d = '', pen = false;
+    for(let i=0;i<arr.length;i++){
+      const v = arr[i];
+      if(v==null || isNaN(v)){ pen=false; continue; }
+      d += (pen?' L ':' M ')+x(i)+' '+yFn(v);
+      pen = true;
+    }
+    return d.trim();
+  };
 
   // grid
   for(let g=0; g<=4; g++){
@@ -1261,32 +1281,31 @@ function drawDualChart(svg, times, s1, s2, opts){
     }
   }
   // area for s1
-  if(opts.fill){
-    let d = `M ${x(0)} ${y1(s1[0])}`;
-    for(let i=1;i<s1.length;i++) d += ` L ${x(i)} ${y1(s1[i])}`;
-    d += ` L ${x(s1.length-1)} ${pad.t+ih} L ${x(0)} ${pad.t+ih} Z`;
+  if(opts.fill && valid1.length){
+    const linePath = pathFrom(s1, y1);
+    let firstIdx = s1.findIndex(v=>v!=null && !isNaN(v));
+    let lastIdx = s1.length-1; while(lastIdx>=0 && (s1[lastIdx]==null||isNaN(s1[lastIdx]))) lastIdx--;
+    const d = linePath + ` L ${x(lastIdx)} ${pad.t+ih} L ${x(firstIdx)} ${pad.t+ih} Z`;
     svg.insertAdjacentHTML('beforeend',
       `<path d="${d}" fill="${opts.color1}" opacity=".15"/>`);
   }
   // line s1
-  {
-    let d = `M ${x(0)} ${y1(s1[0])}`;
-    for(let i=1;i<s1.length;i++) d += ` L ${x(i)} ${y1(s1[i])}`;
+  if(valid1.length){
     svg.insertAdjacentHTML('beforeend',
-      `<path d="${d}" fill="none" stroke="${opts.color1}" stroke-width="2"/>`);
+      `<path d="${pathFrom(s1, y1)}" fill="none" stroke="${opts.color1}" stroke-width="2"/>`);
   }
   // line s2
-  {
-    let d = `M ${x(0)} ${y2(s2[0])}`;
-    for(let i=1;i<s2.length;i++) d += ` L ${x(i)} ${y2(s2[i])}`;
+  if(valid2.length){
     svg.insertAdjacentHTML('beforeend',
-      `<path d="${d}" fill="none" stroke="${opts.color2}" stroke-width="1.5" stroke-dasharray="4 3"/>`);
+      `<path d="${pathFrom(s2, y2)}" fill="none" stroke="${opts.color2}" stroke-width="1.5" stroke-dasharray="4 3"/>`);
   }
   // wind arrows sample
   if(opts.dirData){
     for(let i=0;i<opts.dirData.length;i+=12){
-      const xx = x(i), yy = y1(s1[i])-10;
-      const rot = opts.dirData[i]+180;
+      const dir = opts.dirData[i], val = s1[i];
+      if(dir==null || val==null || isNaN(dir) || isNaN(val)) continue;
+      const xx = x(i), yy = y1(val)-10;
+      const rot = dir+180;
       svg.insertAdjacentHTML('beforeend',
         `<g transform="translate(${xx} ${yy}) rotate(${rot})">
           <path d="M 0 -5 L 3 4 L 0 2 L -3 4 Z" fill="${opts.color1}" opacity=".85"/></g>`);
@@ -1304,8 +1323,14 @@ function drawTideChart(svg, times, tide, tz){
   svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
   svg.setAttribute('preserveAspectRatio','none');
   svg.innerHTML = '';
+  const valid = tide.filter(v=>v!=null && !isNaN(v));
+  if(!valid.length){
+    svg.insertAdjacentHTML('beforeend',
+      `<text x="${W/2}" y="${H/2}" text-anchor="middle" font-size="13" fill="#94a3b8">Tide data unavailable at this location</text>`);
+    return;
+  }
   const iw = W-pad.l-pad.r, ih = H-pad.t-pad.b;
-  const mn = Math.min(...tide), mx = Math.max(...tide);
+  const mn = Math.min(...valid), mx = Math.max(...valid);
   const range = mx-mn || 1;
   const x = i => pad.l + (i/(times.length-1))*iw;
   const y = v => pad.t + ih - ((v-mn)/range)*ih;
@@ -1324,28 +1349,39 @@ function drawTideChart(svg, times, tide, tz){
       lastDay=day;
     }
   }
-  // area
-  let d = `M ${x(0)} ${y(tide[0])}`;
-  for(let i=1;i<tide.length;i++) d += ` L ${x(i)} ${y(tide[i])}`;
-  d += ` L ${x(tide.length-1)} ${pad.t+ih} L ${x(0)} ${pad.t+ih} Z`;
-  svg.insertAdjacentHTML('beforeend',
-    `<path d="${d}" fill="url(#tide-grad)"/>`);
+  // build a null-tolerant path
+  const pathFrom = () => {
+    let d='', pen=false;
+    for(let i=0;i<tide.length;i++){
+      const v = tide[i];
+      if(v==null || isNaN(v)){ pen=false; continue; }
+      d += (pen?' L ':' M ')+x(i)+' '+y(v);
+      pen = true;
+    }
+    return d.trim();
+  };
+  const linePath = pathFrom();
+  let firstIdx = tide.findIndex(v=>v!=null && !isNaN(v));
+  let lastIdx = tide.length-1; while(lastIdx>=0 && (tide[lastIdx]==null||isNaN(tide[lastIdx]))) lastIdx--;
   svg.insertAdjacentHTML('afterbegin',
     `<defs><linearGradient id="tide-grad" x1="0" x2="0" y1="0" y2="1">
       <stop offset="0" stop-color="#38bdf8" stop-opacity=".55"/>
       <stop offset="1" stop-color="#38bdf8" stop-opacity="0"/>
      </linearGradient></defs>`);
-  // line
-  let d2 = `M ${x(0)} ${y(tide[0])}`;
-  for(let i=1;i<tide.length;i++) d2 += ` L ${x(i)} ${y(tide[i])}`;
   svg.insertAdjacentHTML('beforeend',
-    `<path d="${d2}" fill="none" stroke="#38bdf8" stroke-width="2"/>`);
+    `<path d="${linePath} L ${x(lastIdx)} ${pad.t+ih} L ${x(firstIdx)} ${pad.t+ih} Z" fill="url(#tide-grad)"/>`);
+  svg.insertAdjacentHTML('beforeend',
+    `<path d="${linePath}" fill="none" stroke="#38bdf8" stroke-width="2"/>`);
   // now line
   const nowIdx = nowIndex(times);
   const nx = x(nowIdx);
+  const nv = tide[nowIdx];
   svg.insertAdjacentHTML('beforeend',
-    `<line x1="${nx}" y1="${pad.t}" x2="${nx}" y2="${H-pad.b}" stroke="var(--brand)" stroke-width="1.5" stroke-dasharray="3 3"/>
-     <circle cx="${nx}" cy="${y(tide[nowIdx])}" r="4" fill="var(--brand)"/>`);
+    `<line x1="${nx}" y1="${pad.t}" x2="${nx}" y2="${H-pad.b}" stroke="var(--brand)" stroke-width="1.5" stroke-dasharray="3 3"/>`);
+  if(nv!=null && !isNaN(nv)){
+    svg.insertAdjacentHTML('beforeend',
+      `<circle cx="${nx}" cy="${y(nv)}" r="4" fill="var(--brand)"/>`);
+  }
 }
 
 function renderSwellTrains(spot, data){
@@ -1361,11 +1397,11 @@ function renderSwellTrains(spot, data){
       <div style="width:12px;height:12px;background:${r.color};border-radius:2px;margin-right:10px"></div>
       <div style="flex:1">
         <div style="font-size:13px;font-weight:600">${r.label}</div>
-        <div style="font-size:12px;color:var(--mute)">${r.dir!=null?compass(r.dir)+' · '+r.dir.toFixed(0)+'°':'—'}</div>
+        <div style="font-size:12px;color:var(--mute)">${_ok(r.dir)?compass(r.dir)+' · '+fx(r.dir,0)+'°':'—'}</div>
       </div>
       <div style="text-align:right">
-        <div style="font-weight:800">${m_to_ft(r.ht).toFixed(1)} ft</div>
-        <div style="font-size:12px;color:var(--mute)">${r.pd.toFixed(0)} s</div>
+        <div style="font-weight:800">${_ok(r.ht)?fx(m_to_ft(r.ht),1):'—'} ft</div>
+        <div style="font-size:12px;color:var(--mute)">${fx(r.pd,0)} s</div>
       </div>
     </div>
   `).join('');
@@ -1375,9 +1411,17 @@ function renderBestWindows(spot, data){
   const N = Math.min(72, h.time.length);
   const scored = [];
   for(let i=0;i<N;i++){
-    const r = rateConditions(spot, h.wave_height[i], h.swell_wave_direction[i],
-      mps_to_kts(w.wind_speed_10m[i]), w.wind_direction_10m[i]);
-    scored.push({i, s:r.score, ...r, time:h.time[i], wave:h.wave_height[i]});
+    const wv = h.wave_height[i];
+    if(!_ok(wv)) continue;
+    const ws = w.wind_speed_10m[i];
+    const r = rateConditions(spot, wv, h.swell_wave_direction[i],
+      _ok(ws)?mps_to_kts(ws):null, w.wind_direction_10m[i]);
+    scored.push({i, s:r.score, ...r, time:h.time[i], wave:wv});
+  }
+  if(!scored.length){
+    document.getElementById('best-windows').innerHTML =
+      '<div style="color:var(--mute);font-size:13px">No forecast data available.</div>';
+    return;
   }
   scored.sort((a,b)=>b.s-a.s);
   const top = scored.slice(0,4);
@@ -1387,7 +1431,7 @@ function renderBestWindows(spot, data){
     return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)">
       <div>
         <div style="font-weight:600">${d.toLocaleDateString('en-US',{weekday:'short', timeZone:spot.tz})} ${d.toLocaleTimeString('en-US',{timeZone:spot.tz,hour:'numeric'})}</div>
-        <div style="font-size:12px;color:var(--mute)">${m_to_ft(t.wave).toFixed(1)}ft surf</div>
+        <div style="font-size:12px;color:var(--mute)">${fx(m_to_ft(t.wave),1)}ft surf</div>
       </div>
       <span class="chip ${t.cls}">${t.label}</span>
     </div>`;
@@ -1399,24 +1443,40 @@ function renderAIReport(spot, data){
   const wave = h.wave_height[i];
   const period = h.wave_period[i];
   const swellDir = h.swell_wave_direction[i];
-  const wind = mps_to_kts(w.wind_speed_10m[i]);
+  const windMs = w.wind_speed_10m[i];
+  const wind = _ok(windMs) ? mps_to_kts(windMs) : null;
   const windDir = w.wind_direction_10m[i];
+  if(!_ok(wave)){
+    document.getElementById('ai-report-slot').innerHTML = `
+      <div class="ai-report">
+        <div class="badge">Swellcast AI · Forecaster Report</div>
+        <h4>Today at ${spot.name.split(',')[0]}</h4>
+        <p>Live conditions for this spot aren't in the model right now — try a nearby spot for a report.</p>
+      </div>`;
+    return;
+  }
   const rate = rateConditions(spot, wave, swellDir, wind, windDir);
   const offshore = (spot.facing+180)%360;
-  const windDiff = Math.abs(((windDir - offshore + 540)%360)-180);
-  const windQual = windDiff<45?'clean offshore':windDiff<90?'cross-offshore':windDiff<135?'cross-shore':'onshore, textured';
+  const windQual = _ok(windDir)
+    ? (Math.abs(((windDir - offshore + 540)%360)-180) < 45 ? 'clean offshore'
+      : Math.abs(((windDir - offshore + 540)%360)-180) < 90 ? 'cross-offshore'
+      : Math.abs(((windDir - offshore + 540)%360)-180) < 135 ? 'cross-shore' : 'onshore, textured')
+    : 'variable';
 
   // find next best window
-  let best={s:-1,i:0};
+  let best={s:-1,i:0,r:rate};
   for(let j=i;j<Math.min(i+48,h.time.length);j++){
-    const r = rateConditions(spot, h.wave_height[j], h.swell_wave_direction[j],
-      mps_to_kts(w.wind_speed_10m[j]), w.wind_direction_10m[j]);
+    const wv=h.wave_height[j], ws=w.wind_speed_10m[j];
+    if(!_ok(wv)) continue;
+    const r = rateConditions(spot, wv, h.swell_wave_direction[j],
+      _ok(ws)?mps_to_kts(ws):null, w.wind_direction_10m[j]);
     if(r.score>best.s){best={s:r.score,i:j,r};}
   }
   const bestTime = new Date(h.time[best.i]).toLocaleString('en-US',{weekday:'short',hour:'numeric',timeZone:spot.tz});
-  const bestSize = m_to_ft(h.wave_height[best.i]).toFixed(1);
+  const bestSize = fx(m_to_ft(h.wave_height[best.i]),1);
+  const st = h.sea_surface_temperature[i];
 
-  const summary = `${spot.name} is running ${m_to_ft(wave).toFixed(1)}ft at ${period.toFixed(0)} seconds from the ${compass(swellDir)}, with ${wind.toFixed(0)}kt ${compass(windDir)} winds — currently ${windQual}. Overall: <b>${rate.label.toLowerCase()} conditions</b>. The next standout window looks like <b>${bestTime}</b>, when the model has this spot at ${bestSize}ft and rated ${best.r.label.toLowerCase()}. Recommended: ${wetsuitFor(h.sea_surface_temperature[i])}.`;
+  const summary = `${spot.name} is running ${fx(m_to_ft(wave),1)}ft at ${fx(period,0)} seconds from the ${compassSafe(swellDir)}, with ${_ok(wind)?fx(wind,0):'—'}kt ${compassSafe(windDir)} winds — currently ${windQual}. Overall: <b>${rate.label.toLowerCase()} conditions</b>. The next standout window looks like <b>${bestTime}</b>, when the model has this spot at ${bestSize}ft and rated ${best.r.label.toLowerCase()}. Recommended: ${_ok(st)?wetsuitFor(st):'wetsuit'}.`;
 
   document.getElementById('ai-report-slot').innerHTML = `
     <div class="ai-report">
