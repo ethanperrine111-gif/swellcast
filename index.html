@@ -200,6 +200,26 @@ main{max-width:1400px;margin:0 auto;padding:20px}
 .travel-card h4{margin:0;font-size:15px}
 .travel-card p{margin:3px 0 0;font-size:12px;color:#cbd5e1}
 
+/* ---------- Hourly table ---------- */
+.hourly-scroll{max-height:520px;overflow:auto}
+.hourly-tbl{width:100%;border-collapse:collapse;font-size:13px}
+.hourly-tbl th,.hourly-tbl td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+.hourly-tbl thead th{position:sticky;top:0;background:var(--panel);color:var(--mute);
+  font-weight:700;text-transform:uppercase;letter-spacing:.5px;font-size:11px;z-index:2}
+.hourly-tbl tbody tr:hover{background:var(--hover)}
+.hourly-tbl .h-time{font-weight:700;color:var(--text)}
+.hourly-tbl .h-day{color:var(--mute);font-size:11px;display:block;text-transform:uppercase;letter-spacing:.3px}
+.hourly-tbl .h-day.new{color:var(--brand);font-weight:800}
+.hourly-tbl .h-wave{font-weight:800;color:var(--blue2);font-variant-numeric:tabular-nums}
+.hourly-tbl .h-num{font-variant-numeric:tabular-nums}
+.hourly-tbl .h-arrow{display:inline-block;width:14px;height:14px;vertical-align:middle;margin-right:4px}
+.hourly-tbl tr.now-row{background:linear-gradient(90deg,rgba(255,122,26,.10),transparent 60%)}
+.hourly-tbl tr.now-row td:first-child{border-left:3px solid var(--brand);padding-left:8px}
+@media(max-width:640px){
+  .hourly-tbl th,.hourly-tbl td{padding:6px 6px;font-size:12px}
+  .hourly-tbl .col-swell,.hourly-tbl .col-air{display:none}
+}
+
 /* ---------- Map view ---------- */
 .map-wrap{display:grid;grid-template-columns:1fr 340px;gap:16px}
 @media(max-width:900px){.map-wrap{grid-template-columns:1fr}}
@@ -1054,6 +1074,22 @@ async function renderSpot(id){
     <div class="spacer"></div>
 
     <div class="section-head">
+      <h2>Hourly Forecast</h2>
+      <div class="tabs" id="hourly-range" style="border:none;margin:0">
+        <div class="tab active" data-hrs="24">Next 24h</div>
+        <div class="tab" data-hrs="48">48h</div>
+        <div class="tab" data-hrs="72">72h</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="hourly-scroll">
+        <table class="hourly-tbl" id="hourly-tbl"><tbody></tbody></table>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="section-head">
       <h2>16-Day Forecast <span class="chip premium" style="margin-left:8px">Premium</span></h2>
       <div style="color:var(--mute);font-size:13px">Long-range · updates every 6h</div>
     </div>
@@ -1133,6 +1169,14 @@ async function renderSpot(id){
     new Date().toLocaleTimeString('en-US',{timeZone:spot.tz, hour:'numeric', minute:'2-digit'}) + ' local';
 
   if(data.marine && data.weather){
+    renderHourly(spot, data, 24);
+    document.querySelectorAll('#hourly-range .tab').forEach(t=>{
+      t.addEventListener('click', ()=>{
+        document.querySelectorAll('#hourly-range .tab').forEach(x=>x.classList.remove('active'));
+        t.classList.add('active');
+        renderHourly(spot, data, Number(t.dataset.hrs));
+      });
+    });
     renderDays(spot, data);
     renderWaveChart(spot, data);
     renderWindChart(spot, data);
@@ -1382,6 +1426,65 @@ function drawTideChart(svg, times, tide, tz){
     svg.insertAdjacentHTML('beforeend',
       `<circle cx="${nx}" cy="${y(nv)}" r="4" fill="var(--brand)"/>`);
   }
+}
+
+function renderHourly(spot, data, hours){
+  const tbl = document.getElementById('hourly-tbl');
+  if(!tbl) return;
+  const h = data.marine.hourly, w = data.weather.hourly;
+  const startIdx = Math.max(0, nowIndex(h.time));
+  const N = Math.min(hours, h.time.length - startIdx);
+  const rows = [];
+  let lastDay = '';
+  for(let k=0; k<N; k++){
+    const i = startIdx + k;
+    const t = new Date(h.time[i]);
+    const dayLabel = t.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric', timeZone: spot.tz});
+    const timeLabel = t.toLocaleTimeString('en-US', {hour:'numeric', timeZone: spot.tz});
+    const newDay = dayLabel !== lastDay;
+    lastDay = dayLabel;
+
+    const wave = h.wave_height[i];
+    const period = h.wave_period[i];
+    const swellH = h.swell_wave_height[i];
+    const swellP = h.swell_wave_period[i];
+    const swellDir = h.swell_wave_direction[i];
+    const wind = w.wind_speed_10m[i];
+    const gust = w.wind_gusts_10m?.[i];
+    const windDir = w.wind_direction_10m[i];
+    const airT = w.temperature_2m[i];
+    const rate = rateConditions(spot, wave, swellDir,
+      _ok(wind)?mps_to_kts(wind):null, windDir);
+
+    const arrow = _ok(windDir)
+      ? `<svg class="h-arrow" viewBox="0 0 16 16" style="transform:rotate(${windDir+180}deg)"><path d="M8 1 L11 8 L8 6 L5 8 Z" fill="currentColor"/></svg>` : '';
+
+    rows.push(`
+      <tr class="${k===0?'now-row':''}">
+        <td class="h-time">
+          <span class="h-day ${newDay?'new':''}">${newDay?dayLabel:''}</span>
+          ${timeLabel}${k===0?' · NOW':''}
+        </td>
+        <td><span class="chip ${rate.cls}">${rate.label}</span></td>
+        <td class="h-wave">${_ok(wave)?fx(m_to_ft(wave),1)+' ft':'—'}</td>
+        <td class="h-num">${fx(period,0)}s</td>
+        <td class="col-swell h-num">${_ok(swellH)?fx(m_to_ft(swellH),1)+' ft @ '+fx(swellP,0)+'s '+compassSafe(swellDir):'—'}</td>
+        <td class="h-num" style="color:var(--teal);font-weight:700">
+          ${arrow}${_ok(wind)?fx(mps_to_kts(wind),0):'—'}<span style="color:var(--mute);font-weight:400"> kts</span>
+          ${_ok(gust)?`<span style="color:var(--mute);font-size:11px"> · g${fx(mps_to_kts(gust),0)}</span>`:''}
+        </td>
+        <td class="col-air h-num" style="color:var(--mute)">${_ok(airT)?fx(cToF(airT),0)+'°':'—'}</td>
+      </tr>
+    `);
+  }
+  tbl.innerHTML = `
+    <thead>
+      <tr>
+        <th>Time</th><th>Rating</th><th>Surf</th><th>Period</th>
+        <th class="col-swell">Swell</th><th>Wind</th><th class="col-air">Air</th>
+      </tr>
+    </thead>
+    <tbody>${rows.join('')}</tbody>`;
 }
 
 function renderSwellTrains(spot, data){
